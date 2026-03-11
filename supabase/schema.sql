@@ -23,3 +23,16 @@ create table if not exists share_links (
 );
 
 create index if not exists idx_share_links_expires_at on share_links(expires_at);
+
+create table if not exists debug_logs (
+  id bigint generated always as identity primary key,
+  app_name text not null default 'mini-zoom-share',
+  level text not null default 'info',
+  source text not null,
+  message text not null,
+  meta jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_debug_logs_created_at on debug_logs(created_at desc);
+create index if not exists idx_debug_logs_app_name on debug_logs(app_name);

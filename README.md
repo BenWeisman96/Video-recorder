@@ -24,6 +24,18 @@ Open `http://localhost:3000`.
 - Viewer link is tokenized (`/v/:token`) and resolves via server-side hash lookup.
 - Storage files remain private; playback uses short-lived signed URLs.
 
+## Debug pipeline (no copy/paste logs)
+
+1. Run updated SQL in `supabase/schema.sql` (adds `debug_logs`).
+2. Start app normally in Replit (`npm run dev`).
+3. On this machine, tail logs live:
+
+```bash
+npm run debug:tail
+```
+
+The app now sends client + server errors to `debug_logs`, so debugging can happen from a single live stream.
+
 ## Suggested next hardening
 
 - Add auth (Supabase Auth) and owner-based RLS.

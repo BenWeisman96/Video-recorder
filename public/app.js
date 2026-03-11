@@ -2,6 +2,30 @@ let mediaRecorder;
 let chunks = [];
 let stream;
 
+async function debugLog(level, source, message, meta = {}) {
+  try {
+    await fetch('/api/debug/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level, source, message, meta })
+    });
+  } catch {}
+}
+
+window.addEventListener('error', (event) => {
+  debugLog('error', 'client.window', event.message || 'window-error', {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  debugLog('error', 'client.promise', event.reason?.message || 'unhandled-rejection', {
+    reason: String(event.reason)
+  });
+});
+
 const startBtn = document.getElementById('start');
 const stopBtn = document.getElementById('stop');
 const statusEl = document.getElementById('status');
@@ -15,6 +39,14 @@ startBtn.onclick = async () => {
 
     const useScreen = document.getElementById('screen').checked;
     const useCamera = document.getElementById('camera').checked;
+
+    await debugLog('info', 'client.record.start', 'record-requested', {
+      useScreen,
+      useCamera,
+      userAgent: navigator.userAgent,
+      isSecureContext: window.isSecureContext,
+      hasMediaDevices: !!navigator.mediaDevices
+    });
 
     let tracks = [];
 
@@ -45,6 +77,10 @@ startBtn.onclick = async () => {
     stopBtn.disabled = false;
     statusEl.textContent = 'Recording...';
   } catch (e) {
+    await debugLog('error', 'client.record.start', e.message || 'Could not start video source', {
+      name: e.name,
+      stack: e.stack
+    });
     statusEl.textContent = e.message;
   }
 };
@@ -68,11 +104,13 @@ async function upload() {
   const data = await res.json();
 
   if (!res.ok) {
+    await debugLog('error', 'client.upload', data.error || 'Upload failed', { status: res.status });
     statusEl.textContent = data.error || 'Upload failed';
     startBtn.disabled = false;
     return;
   }
 
+  await debugLog('info', 'client.upload', 'upload-success', { link: data.link, noExpiry: data.noExpiry });
   statusEl.textContent = 'Done';
   resultEl.textContent = `Link: ${data.link}\n${data.noExpiry ? 'No expiration' : `Expires: ${new Date(data.expiresAt).toLocaleString()}`}`;
   startBtn.disabled = false;

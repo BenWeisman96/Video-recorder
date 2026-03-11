@@ -11,6 +11,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 102
 const PORT = Number(process.env.PORT || 3000);
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`;
 const DEFAULT_EXPIRE_DAYS = Number(process.env.DEFAULT_EXPIRE_DAYS || 7);
+const APP_NAME = process.env.APP_NAME || 'mini-zoom-share';
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const bucket = process.env.SUPABASE_BUCKET || 'recordings';
 
@@ -20,6 +21,26 @@ app.use(express.static('public'));
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const token = () => crypto.randomBytes(24).toString('base64url');
 const addDaysISO = (days) => new Date(Date.now() + days * 86400 * 1000).toISOString();
+
+async function logDebug(level, source, message, meta = {}) {
+  const payload = { app_name: APP_NAME, level, source, message, meta };
+  console[level === 'error' ? 'error' : 'log'](`[${APP_NAME}] ${source}: ${message}`, meta);
+
+  const { error } = await supabase.from('debug_logs').insert(payload);
+  if (error) {
+    console.error(`[${APP_NAME}] failed to persist debug log`, error.message);
+  }
+}
+
+app.post('/api/debug/log', async (req, res) => {
+  try {
+    const { level = 'info', source = 'client', message = 'client-log', meta = {} } = req.body || {};
+    await logDebug(level, source, message, meta);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Could not log debug data' });
+  }
+});
 
 app.post('/api/upload', upload.single('video'), async (req, res) => {
   try {
@@ -63,6 +84,7 @@ app.post('/api/upload', upload.single('video'), async (req, res) => {
       noExpiry
     });
   } catch (err) {
+    await logDebug('error', 'server.upload', err.message || 'Upload failed', { stack: err.stack });
     res.status(500).json({ error: err.message || 'Upload failed' });
   }
 });
@@ -101,6 +123,7 @@ app.get('/api/share/:token', async (req, res) => {
       expiresAt: link.expires_at
     });
   } catch (err) {
+    await logDebug('error', 'server.share', err.message || 'Could not fetch share', { stack: err.stack });
     res.status(500).json({ error: err.message || 'Could not fetch share' });
   }
 });
@@ -109,6 +132,7 @@ app.get('/v/:token', (_req, res) => {
   res.sendFile(new URL('./public/view.html', import.meta.url).pathname);
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`mini-zoom-share running on ${APP_BASE_URL}`);
+  await logDebug('info', 'server.start', 'server-online', { baseUrl: APP_BASE_URL, port: PORT });
 });
