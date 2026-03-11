@@ -31,8 +31,14 @@ const stopBtn = document.getElementById('stop');
 const statusEl = document.getElementById('status');
 const resultEl = document.getElementById('result');
 const preview = document.getElementById('preview');
+const permissionModal = document.getElementById('permissionModal');
+const modalCancel = document.getElementById('modalCancel');
+const modalContinue = document.getElementById('modalContinue');
 
-startBtn.onclick = async () => {
+function showModal() { permissionModal.classList.remove('hidden'); }
+function hideModal() { permissionModal.classList.add('hidden'); }
+
+async function startRecordingFlow() {
   try {
     resultEl.textContent = '';
     statusEl.textContent = 'Requesting permissions...';
@@ -60,9 +66,7 @@ startBtn.onclick = async () => {
       tracks = tracks.concat(c.getTracks());
     }
 
-    if (!tracks.length) {
-      throw new Error('Select screen or camera.');
-    }
+    if (!tracks.length) throw new Error('Select screen or camera.');
 
     stream = new MediaStream(tracks);
     preview.srcObject = stream;
@@ -81,8 +85,24 @@ startBtn.onclick = async () => {
       name: e.name,
       stack: e.stack
     });
-    statusEl.textContent = e.message;
+    statusEl.textContent = e.name === 'NotReadableError'
+      ? 'Video source is busy. Close Zoom/Meet/Camera apps, then try again.'
+      : (e.message || 'Could not start video source');
   }
+}
+
+startBtn.onclick = () => {
+  showModal();
+};
+
+modalCancel.onclick = () => {
+  hideModal();
+  statusEl.textContent = 'Canceled.';
+};
+
+modalContinue.onclick = async () => {
+  hideModal();
+  await startRecordingFlow();
 };
 
 stopBtn.onclick = () => {

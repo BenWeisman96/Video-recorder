@@ -21,6 +21,18 @@
     <p id="status"></p>
     <pre id="result"></pre>
   </main>
+
+  <div id="permissionModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="permissionTitle">
+    <div class="modal-card">
+      <h2 id="permissionTitle">Allow camera / mic / screen</h2>
+      <p>Next, your browser will show permission prompts. Click <strong>Allow</strong> so recording can start.</p>
+      <div class="modal-actions">
+        <button id="modalCancel">Cancel</button>
+        <button id="modalContinue">Continue</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>
