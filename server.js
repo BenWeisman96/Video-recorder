@@ -8,8 +8,11 @@ import { createClient } from '@supabase/supabase-js';
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
-const PORT = Number(process.env.PORT || 3000);
-const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`;
+const PORT = Number(process.env.PORT || 5000);
+const APP_BASE_URL = process.env.APP_BASE_URL
+  || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
+  || (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}` : null)
+  || `http://localhost:${PORT}`;
 const DEFAULT_EXPIRE_DAYS = Number(process.env.DEFAULT_EXPIRE_DAYS || 7);
 const APP_NAME = process.env.APP_NAME || 'mini-zoom-share';
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -26,10 +29,12 @@ async function logDebug(level, source, message, meta = {}) {
   const payload = { app_name: APP_NAME, level, source, message, meta };
   console[level === 'error' ? 'error' : 'log'](`[${APP_NAME}] ${source}: ${message}`, meta);
 
-  const { error } = await supabase.from('debug_logs').insert(payload);
-  if (error) {
-    console.error(`[${APP_NAME}] failed to persist debug log`, error.message);
-  }
+  try {
+    const { error } = await supabase.from('debug_logs').insert(payload);
+    if (error) {
+      console.warn(`[${APP_NAME}] debug log not persisted (table may not exist)`);
+    }
+  } catch (_) {}
 }
 
 app.post('/api/debug/log', async (req, res) => {
@@ -132,7 +137,7 @@ app.get('/v/:token', (_req, res) => {
   res.sendFile(new URL('./public/view.html', import.meta.url).pathname);
 });
 
-app.listen(PORT, async () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`mini-zoom-share running on ${APP_BASE_URL}`);
   await logDebug('info', 'server.start', 'server-online', { baseUrl: APP_BASE_URL, port: PORT });
 });
