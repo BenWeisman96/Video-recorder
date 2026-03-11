@@ -9,7 +9,10 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
 const PORT = Number(process.env.PORT || 5000);
-const APP_BASE_URL = process.env.APP_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN || `localhost:${PORT}`}`;
+const APP_BASE_URL = process.env.APP_BASE_URL
+  || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
+  || (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}` : null)
+  || `http://localhost:${PORT}`;
 const DEFAULT_EXPIRE_DAYS = Number(process.env.DEFAULT_EXPIRE_DAYS || 7);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const bucket = process.env.SUPABASE_BUCKET || 'recordings';
