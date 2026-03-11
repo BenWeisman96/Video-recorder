@@ -25,26 +25,19 @@ const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex'
 const token = () => crypto.randomBytes(24).toString('base64url');
 const addDaysISO = (days) => new Date(Date.now() + days * 86400 * 1000).toISOString();
 
-async function logDebug(level, source, message, meta = {}) {
+function logDebug(level, source, message, meta = {}) {
   const payload = { app_name: APP_NAME, level, source, message, meta };
   console[level === 'error' ? 'error' : 'log'](`[${APP_NAME}] ${source}: ${message}`, meta);
 
-  try {
-    const { error } = await supabase.from('debug_logs').insert(payload);
-    if (error) {
-      console.warn(`[${APP_NAME}] debug log not persisted (table may not exist)`);
-    }
-  } catch (_) {}
+  supabase.from('debug_logs').insert(payload).then(({ error }) => {
+    if (error) console.warn(`[${APP_NAME}] debug log not persisted (table may not exist)`);
+  }).catch(() => {});
 }
 
-app.post('/api/debug/log', async (req, res) => {
-  try {
-    const { level = 'info', source = 'client', message = 'client-log', meta = {} } = req.body || {};
-    await logDebug(level, source, message, meta);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message || 'Could not log debug data' });
-  }
+app.post('/api/debug/log', (req, res) => {
+  const { level = 'info', source = 'client', message = 'client-log', meta = {} } = req.body || {};
+  logDebug(level, source, message, meta);
+  res.json({ ok: true });
 });
 
 app.post('/api/upload', upload.single('video'), async (req, res) => {
@@ -89,7 +82,7 @@ app.post('/api/upload', upload.single('video'), async (req, res) => {
       noExpiry
     });
   } catch (err) {
-    await logDebug('error', 'server.upload', err.message || 'Upload failed', { stack: err.stack });
+    logDebug('error', 'server.upload', err.message || 'Upload failed', { stack: err.stack });
     res.status(500).json({ error: err.message || 'Upload failed' });
   }
 });
@@ -128,7 +121,7 @@ app.get('/api/share/:token', async (req, res) => {
       expiresAt: link.expires_at
     });
   } catch (err) {
-    await logDebug('error', 'server.share', err.message || 'Could not fetch share', { stack: err.stack });
+    logDebug('error', 'server.share', err.message || 'Could not fetch share', { stack: err.stack });
     res.status(500).json({ error: err.message || 'Could not fetch share' });
   }
 });
@@ -137,7 +130,7 @@ app.get('/v/:token', (_req, res) => {
   res.sendFile(new URL('./public/view.html', import.meta.url).pathname);
 });
 
-app.listen(PORT, '0.0.0.0', async () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`mini-zoom-share running on ${APP_BASE_URL}`);
-  await logDebug('info', 'server.start', 'server-online', { baseUrl: APP_BASE_URL, port: PORT });
+  logDebug('info', 'server.start', 'server-online', { baseUrl: APP_BASE_URL, port: PORT });
 });
