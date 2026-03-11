@@ -34,9 +34,39 @@ const preview = document.getElementById('preview');
 const permissionModal = document.getElementById('permissionModal');
 const modalCancel = document.getElementById('modalCancel');
 const modalContinue = document.getElementById('modalContinue');
+const cameraSourceEl = document.getElementById('cameraSource');
+const refreshDevicesBtn = document.getElementById('refreshDevices');
 
 function showModal() { permissionModal.classList.remove('hidden'); }
 function hideModal() { permissionModal.classList.add('hidden'); }
+
+async function loadCameraDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cameras = devices.filter((d) => d.kind === 'videoinput');
+
+  cameraSourceEl.innerHTML = '';
+  if (!cameras.length) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No camera devices found';
+    cameraSourceEl.appendChild(opt);
+    return;
+  }
+
+  cameras.forEach((cam, idx) => {
+    const opt = document.createElement('option');
+    opt.value = cam.deviceId;
+    opt.textContent = cam.label || `Camera ${idx + 1}`;
+    cameraSourceEl.appendChild(opt);
+  });
+}
+
+async function requestDeviceLabels() {
+  try {
+    const temp = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    temp.getTracks().forEach((t) => t.stop());
+  } catch {}
+}
 
 async function startRecordingFlow() {
   try {
@@ -62,7 +92,11 @@ async function startRecordingFlow() {
     }
 
     if (useCamera) {
-      const c = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const selectedCamera = cameraSourceEl.value;
+      const c = await navigator.mediaDevices.getUserMedia({
+        video: selectedCamera ? { deviceId: { exact: selectedCamera } } : true,
+        audio: true
+      });
       tracks = tracks.concat(c.getTracks());
     }
 
@@ -89,6 +123,18 @@ async function startRecordingFlow() {
       ? 'Video source is busy. Close Zoom/Meet/Camera apps, then try again.'
       : (e.message || 'Could not start video source');
   }
+}
+
+refreshDevicesBtn.onclick = async () => {
+  await requestDeviceLabels();
+  await loadCameraDevices();
+  await debugLog('info', 'client.devices', 'camera-list-refreshed');
+};
+
+if (navigator.mediaDevices?.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    loadCameraDevices();
+  });
 }
 
 startBtn.onclick = () => {
@@ -135,3 +181,8 @@ async function upload() {
   resultEl.textContent = `Link: ${data.link}\n${data.noExpiry ? 'No expiration' : `Expires: ${new Date(data.expiresAt).toLocaleString()}`}`;
   startBtn.disabled = false;
 }
+
+(async () => {
+  await requestDeviceLabels();
+  await loadCameraDevices();
+})();
