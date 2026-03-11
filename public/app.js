@@ -1,6 +1,10 @@
 let mediaRecorder;
 let chunks = [];
 let stream;
+let screenStream;
+let cameraStream;
+let mixedStream;
+let drawRaf;
 
 async function debugLog(level, source, message, meta = {}) {
   try {
@@ -68,6 +72,72 @@ async function requestDeviceLabels() {
   } catch {}
 }
 
+function cleanupStreams() {
+  [stream, mixedStream, screenStream, cameraStream].forEach((s) => s?.getTracks().forEach((t) => t.stop()));
+  stream = null;
+  mixedStream = null;
+  screenStream = null;
+  cameraStream = null;
+  if (drawRaf) cancelAnimationFrame(drawRaf);
+  drawRaf = null;
+}
+
+function buildMixedStream() {
+  if (!screenStream || !cameraStream) return null;
+
+  const screenVideo = document.createElement('video');
+  screenVideo.srcObject = screenStream;
+  screenVideo.muted = true;
+  screenVideo.playsInline = true;
+
+  const cameraVideo = document.createElement('video');
+  cameraVideo.srcObject = cameraStream;
+  cameraVideo.muted = true;
+  cameraVideo.playsInline = true;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1280;
+  canvas.height = 720;
+  const ctx = canvas.getContext('2d');
+
+  const draw = () => {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (screenVideo.readyState >= 2) {
+      ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+    }
+
+    const pipW = Math.floor(canvas.width * 0.24);
+    const pipH = Math.floor(pipW * 9 / 16);
+    const margin = 16;
+    const x = canvas.width - pipW - margin;
+    const y = canvas.height - pipH - margin;
+
+    if (cameraVideo.readyState >= 2) {
+      ctx.fillStyle = 'rgba(0,0,0,.4)';
+      ctx.fillRect(x - 2, y - 2, pipW + 4, pipH + 4);
+      ctx.drawImage(cameraVideo, x, y, pipW, pipH);
+    }
+
+    drawRaf = requestAnimationFrame(draw);
+  };
+
+  screenVideo.play().catch(() => {});
+  cameraVideo.play().catch(() => {});
+  draw();
+
+  const out = canvas.captureStream(30);
+
+  const audioTracks = [
+    ...screenStream.getAudioTracks(),
+    ...cameraStream.getAudioTracks()
+  ];
+  audioTracks.forEach((t) => out.addTrack(t));
+
+  return out;
+}
+
 async function startRecordingFlow() {
   try {
     resultEl.textContent = '';
@@ -84,25 +154,29 @@ async function startRecordingFlow() {
       hasMediaDevices: !!navigator.mediaDevices
     });
 
-    let tracks = [];
+    cleanupStreams();
 
     if (useScreen) {
-      const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      tracks = tracks.concat(s.getTracks());
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     }
 
     if (useCamera) {
       const selectedCamera = cameraSourceEl.value;
-      const c = await navigator.mediaDevices.getUserMedia({
+      cameraStream = await navigator.mediaDevices.getUserMedia({
         video: selectedCamera ? { deviceId: { exact: selectedCamera } } : true,
         audio: true
       });
-      tracks = tracks.concat(c.getTracks());
     }
 
-    if (!tracks.length) throw new Error('Select screen or camera.');
+    if (!useScreen && !useCamera) throw new Error('Select screen or camera.');
 
-    stream = new MediaStream(tracks);
+    if (useScreen && useCamera) {
+      mixedStream = buildMixedStream();
+      stream = mixedStream;
+    } else {
+      stream = useScreen ? screenStream : cameraStream;
+    }
+
     preview.srcObject = stream;
 
     chunks = [];
@@ -120,7 +194,7 @@ async function startRecordingFlow() {
       stack: e.stack
     });
     statusEl.textContent = e.name === 'NotReadableError'
-      ? 'Video source is busy. Close Zoom/Meet/Camera apps, then try again.'
+      ? 'Video source is busy. Pick a different camera source or close other camera apps.'
       : (e.message || 'Could not start video source');
   }
 }
@@ -137,9 +211,7 @@ if (navigator.mediaDevices?.addEventListener) {
   });
 }
 
-startBtn.onclick = () => {
-  showModal();
-};
+startBtn.onclick = () => showModal();
 
 modalCancel.onclick = () => {
   hideModal();
@@ -153,7 +225,7 @@ modalContinue.onclick = async () => {
 
 stopBtn.onclick = () => {
   mediaRecorder?.stop();
-  stream?.getTracks().forEach((t) => t.stop());
+  cleanupStreams();
   stopBtn.disabled = true;
   statusEl.textContent = 'Processing...';
 };

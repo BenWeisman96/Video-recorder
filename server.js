@@ -24,6 +24,25 @@ app.use(express.static('public'));
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const token = () => crypto.randomBytes(24).toString('base64url');
 const addDaysISO = (days) => new Date(Date.now() + days * 86400 * 1000).toISOString();
+let bucketChecked = false;
+
+async function ensureBucket() {
+  if (bucketChecked) return;
+
+  const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+  if (listError) throw listError;
+
+  const exists = buckets?.some((b) => b.name === bucket);
+  if (!exists) {
+    const { error: createError } = await supabase.storage.createBucket(bucket, { public: false });
+    if (createError && !String(createError.message || '').toLowerCase().includes('already exists')) {
+      throw createError;
+    }
+    logDebug('info', 'server.storage', 'bucket-created', { bucket });
+  }
+
+  bucketChecked = true;
+}
 
 function logDebug(level, source, message, meta = {}) {
   const payload = { app_name: APP_NAME, level, source, message, meta };
@@ -43,6 +62,7 @@ app.post('/api/debug/log', (req, res) => {
 app.post('/api/upload', upload.single('video'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Missing file' });
+    await ensureBucket();
 
     const title = (req.body.title || 'Recording').toString().slice(0, 200);
     const noExpiry = req.body.noExpiry === 'true';
@@ -89,6 +109,7 @@ app.post('/api/upload', upload.single('video'), async (req, res) => {
 
 app.get('/api/share/:token', async (req, res) => {
   try {
+    await ensureBucket();
     const tokenHash = sha256(req.params.token);
     const { data: link, error: linkError } = await supabase
       .from('share_links')
@@ -133,4 +154,5 @@ app.get('/v/:token', (_req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`mini-zoom-share running on ${APP_BASE_URL}`);
   logDebug('info', 'server.start', 'server-online', { baseUrl: APP_BASE_URL, port: PORT });
+  ensureBucket().catch((err) => logDebug('error', 'server.storage', err.message || 'bucket-check-failed'));
 });
